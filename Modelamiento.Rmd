@@ -1,0 +1,194 @@
+---
+title: "Modelamiento Térmico Operacional"
+author: "Sebastian Marinovic Leiva"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+subtitle: Relación entre Δ Agua Enfriadores y Temperatura de Gases de Salida
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lmtest)
+library(mgcv)
+library(broom)
+library(earth)
+library(xgboost)
+```
+
+# 1. Introducción
+Este informe presenta un análisis del comportamiento térmico en las plantas GCP-2 y GCP-4, considerando las líneas de proceso A y B. Se modeló la temperatura de gases de escape (Temperatura) como función de variables operacionales como el Delta.Agua, Temp.Entrada.Agua.Torre y la clasificación Grupo_Tren_Equipo.
+
+# 2. Objetivos
+- Analizar la relación entre las variables térmicas y de proceso.
+- Comparar el ajuste y capacidad predictiva de distintos modelos estadísticos y de machine learning.
+- Evaluar la contribución de cada planta y línea al comportamiento térmico.
+
+# 3. Preparación de Datos
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# === CARGAR DATOS ===
+data_gases <- read.csv("temp_gcp_data.csv")
+data_delta <- read.csv("data.csv")
+
+# === PREPROCESAMIENTO DE GASES ===
+data_gases <- data_gases %>%
+  mutate(FechaHora = ymd_hms(FechaHora),
+         Fecha = as.Date(FechaHora),
+         Planta = case_when(
+           Tren %in% c("GCP-2A", "GCP-2B") ~ "GCP-2",
+           Tren %in% c("GCP-4A", "GCP-4B") ~ "GCP-4"
+         ))
+
+# === PREPROCESAMIENTO DE DELTA ===
+data_delta <- data_delta %>%
+  filter(Estado == "En Servicio") %>%
+  mutate(Fecha = as.Date(Fecha))
+
+# === MAPEO ENTRE TREN Y EQUIPO ===
+mapeo <- tibble(
+  Tren = rep(c("GCP-2A", "GCP-2B", "GCP-4A", "GCP-4B"), each = 3),
+  Equipo = rep(c("EP-110 A", "EP-110 B", "EP-110 C", "EP-110 D", "EP-110 E", "EP-110 F"), 2)
+)
+
+# === CALCULAR TEMP MEDIA POR FECHA Y PLANTA ===
+temp_gases_diaria <- data_gases %>%
+  group_by(Fecha, Planta) %>%
+  summarise(TempGas = mean(Temperatura, na.rm = TRUE), .groups = "drop")
+
+# === UNIÓN Y CONSTRUCCIÓN FINAL DE data_combined ===
+data_combined <- data_gases %>%
+  left_join(mapeo, by = "Tren") %>%
+  inner_join(data_delta, by = c("Fecha", "Planta", "Equipo")) %>%
+  mutate(Grupo_Tren_Equipo = case_when(
+    Tren == "GCP-2A" & Equipo %in% c("EP-110 A", "EP-110 B", "EP-110 C") ~ "GCP2_LineaA",
+    Tren == "GCP-2B" & Equipo %in% c("EP-110 D", "EP-110 E", "EP-110 F") ~ "GCP2_LineaB",
+    Tren == "GCP-4A" & Equipo %in% c("EP-110 A", "EP-110 B", "EP-110 C") ~ "GCP4_LineaA",
+    Tren == "GCP-4B" & Equipo %in% c("EP-110 D", "EP-110 E", "EP-110 F") ~ "GCP4_LineaB"
+  )) %>%
+  filter(!is.na(Grupo_Tren_Equipo)) %>%
+  mutate(Grupo_Tren_Equipo = droplevels(factor(Grupo_Tren_Equipo))) %>%
+  left_join(temp_gases_diaria, by = c("Fecha", "Planta"))  # ✅ AGREGAMOS TempGas AQUÍ
+
+```
+
+# 4. Comparación de Modelos Aplicados
+```{r}
+# --- LIBRERÍAS NECESARIAS ---
+library(tidyverse)
+library(xgboost)
+library(caret)
+library(mgcv)
+library(earth)
+library(patchwork)
+
+set.seed(123)  # Reproducibilidad
+
+# --- MATRIZ DE DISEÑO PARA XGBOOST (agregando TempGas) ---
+x_data <- model.matrix(Temperatura ~ Delta.Agua + Temp.Entrada.Agua.Torre + TempGas + Grupo_Tren_Equipo, 
+                       data = data_combined)[, -1]
+y_data <- data_combined$Temperatura
+
+# --- VERIFICAR NROW COINCIDE ---
+stopifnot(nrow(x_data) == length(y_data))
+
+# --- PARTICIÓN TRAIN/TEST ---
+train_index <- createDataPartition(y_data, p = 0.8, list = FALSE)
+test_index  <- setdiff(seq_along(y_data), train_index)
+
+x_train <- x_data[train_index, ]
+y_train <- y_data[train_index]
+x_test  <- x_data[test_index, ]
+y_test  <- y_data[test_index]
+
+# --- CREAR DMATRIX ---
+dtrain <- xgb.DMatrix(data = x_train, label = y_train)
+dtest  <- xgb.DMatrix(data = x_test, label = y_test)
+
+# --- ENTRENAMIENTO DE MODELOS (TODOS CON TempGas) ---
+modelo_simple     <- lm(Temperatura ~ Delta.Agua, data = data_combined)
+modelo_extendido  <- lm(Temperatura ~ Delta.Agua + Temp.Entrada.Agua.Torre + TempGas + Grupo_Tren_Equipo, data = data_combined)
+modelo_poly       <- lm(Temperatura ~ poly(Delta.Agua, 2) + Temp.Entrada.Agua.Torre + TempGas + Grupo_Tren_Equipo, data = data_combined)
+modelo_gam        <- gam(Temperatura ~ s(Delta.Agua) + Temp.Entrada.Agua.Torre + TempGas + Grupo_Tren_Equipo, data = data_combined)
+modelo_mars       <- earth(Temperatura ~ Delta.Agua + Temp.Entrada.Agua.Torre + TempGas + Grupo_Tren_Equipo, data = data_combined)
+modelo_xgb        <- xgboost(data = dtrain, objective = "reg:squarederror", nrounds = 100, verbose = 0)
+
+# --- PREDICCIONES SOBRE TEST SET ---
+df_test <- data_combined[test_index, ]
+pred_simple     <- predict(modelo_simple, newdata = df_test)
+pred_extendido  <- predict(modelo_extendido, newdata = df_test)
+pred_poly       <- predict(modelo_poly, newdata = df_test)
+pred_gam        <- predict(modelo_gam, newdata = df_test)
+pred_mars       <- predict(modelo_mars, newdata = df_test)
+pred_xgb        <- predict(modelo_xgb, newdata = x_test)
+
+# --- MÉTRICAS DE COMPARACIÓN ---
+metricas <- tibble(
+  Modelo = c("Lineal Simple", "Lineal Múltiple", "Polinomial", "GAM", "MARS", "XGBoost"),
+  RMSE   = c(
+    sqrt(mean((y_test - pred_simple)^2)),
+    sqrt(mean((y_test - pred_extendido)^2)),
+    sqrt(mean((y_test - pred_poly)^2)),
+    sqrt(mean((y_test - pred_gam)^2)),
+    sqrt(mean((y_test - pred_mars)^2)),
+    sqrt(mean((y_test - pred_xgb)^2))
+  ),
+  R2     = c(
+    1 - sum((y_test - pred_simple)^2) / sum((y_test - mean(y_test))^2),
+    1 - sum((y_test - pred_extendido)^2) / sum((y_test - mean(y_test))^2),
+    1 - sum((y_test - pred_poly)^2) / sum((y_test - mean(y_test))^2),
+    1 - sum((y_test - pred_gam)^2) / sum((y_test - mean(y_test))^2),
+    1 - sum((y_test - pred_mars)^2) / sum((y_test - mean(y_test))^2),
+    1 - sum((y_test - pred_xgb)^2) / sum((y_test - mean(y_test))^2)
+  )
+)
+
+print(metricas)
+
+# --- VISUALIZACIÓN COMPARATIVA ---
+df_test <- df_test %>%
+  mutate(
+    Pred_simple    = pred_simple,
+    Pred_extendido = pred_extendido,
+    Pred_poly      = pred_poly,
+    Pred_gam       = pred_gam,
+    Pred_mars      = pred_mars,
+    Pred_xgb       = pred_xgb
+  )
+
+# Función para crear gráficos individuales
+grafico_pred <- function(df, pred_col, titulo, color) {
+  ggplot(df, aes(x = Temperatura, y = .data[[pred_col]])) +
+    geom_point(alpha = 0.5, color = color) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+    labs(title = titulo, x = "Temperatura Real", y = "Temperatura Predicha") +
+    theme_minimal()
+}
+
+# Graficar
+p1 <- grafico_pred(df_test, "Pred_simple", "Lineal Simple", "gray30")
+p2 <- grafico_pred(df_test, "Pred_extendido", "Lineal Múltiple", "steelblue")
+p3 <- grafico_pred(df_test, "Pred_poly", "Polinomial", "forestgreen")
+p4 <- grafico_pred(df_test, "Pred_gam", "GAM", "purple")
+p5 <- grafico_pred(df_test, "Pred_mars", "MARS", "orange")
+p6 <- grafico_pred(df_test, "Pred_xgb", "XGBoost", "firebrick")
+
+(p1 | p2 | p3) / (p4 | p5 | p6)
+
+# Guardar gráfico
+ggsave("comparacion_modelos_real_vs_pred_test.png", width = 14, height = 8)
+
+
+```
+ 
+
+# 5. Conclusiones
+- XGBoost fue el mejor modelo en este contexto, con RMSE ≈ 1.13 y R² ≈ 93.5%.
+- GAM y MARS también son modelos competitivos y adecuados para problemas de esta naturaleza.
+- Modelos lineales (simple y múltiple) son útiles como referencia pero no capturan la complejidad de los datos.
+- Las variables Temp.Entrada.Agua.Torre y el grupo de planta/línea tienen un efecto importante en la temperatura.
