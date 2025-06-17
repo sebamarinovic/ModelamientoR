@@ -45,13 +45,26 @@ Se construyen y validan los siguientes modelos predictivos para estimar `Tempera
 
 ---
 
-## 📈 Visualización
+## 📊 Resultados del Análisis PDP
 
-El documento incluye comparaciones gráficas **predicho vs observado** para cada modelo.  
-Esto permite identificar:
-- Sesgos sistemáticos
-- Subajuste o sobreajuste
-- Distribución de errores por rango
+Se utilizó la librería `pdp` para analizar el efecto marginal de `TempGas` sobre `Δ Agua` usando el modelo entrenado `XGBoost`.
+
+🔺 **Pendiente PDP (TempGas → Δ Agua):**  
+> Por cada incremento de **1 °C en TempGas**, se estima una **disminución de `X` °C en Δ Agua**.  
+> Este valor fue estimado mediante ajuste lineal al gráfico de dependencia parcial.
+
+✏️ Este resultado entrega una **interpretación cuantitativa** crucial para comprender cómo afecta el sobrecalentamiento del sistema de gases a la eficiencia térmica del sistema de enfriamiento.
+
+---
+
+## 🖥️ Aplicación Shiny
+
+El proyecto cuenta con una app `Shiny` para diagnóstico operativo que incluye:
+
+- Identificación de **equipos críticos**.
+- Visualización de **ciclos de mantenimiento**.
+- Series de tiempo y boxplots de Δ Agua.
+- Análisis automatizado con XGBoost.
 
 📎 Se exporta una figura en `"comparacion_modelos_real_vs_pred_test.png"` para revisión visual.
 ![image](https://github.com/user-attachments/assets/e1f5bba4-5d1f-4f8f-b0b6-bb263164c993)
