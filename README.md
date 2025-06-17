@@ -1,6 +1,6 @@
 # 📘 Modelamiento Térmico Operacional — Informe RMarkdown
 
-Este documento contiene el desarrollo analítico del comportamiento térmico en las plantas industriales **GCP-2** y **GCP-4**, usando herramientas estadísticas y de machine learning para entender y predecir la temperatura de gases de salida, en relación con variables críticas del sistema de enfriamiento.
+Este documento contiene el desarrollo analítico del comportamiento térmico en las plantas industriales **GCP-2** y **GCP-4**, usando herramientas estadísticas y de machine learning para entender y predecir  como afecta la temperatura de gases de salida, en relación con variables críticas del sistema de enfriamiento.
 
 ---
 
