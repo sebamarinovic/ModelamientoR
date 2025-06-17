@@ -69,4 +69,5 @@ Sebastian Marinovic Leiva
 Junio 2025
 
 📄 RMarkdown: modelamiento.Rmd
+
 🧠 Proyecto: Análisis de Eficiencia Térmica EP-110
