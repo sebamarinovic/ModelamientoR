@@ -65,8 +65,7 @@ install.packages(c("tidyverse", "xgboost", "caret", "earth", "mgcv", "lubridate"
 ```
 
 ## ✍️ Autor
-**Sebastian Marinovic Leiva**
-Junio 2025
+**Sebastian Marinovic Leiva** - Junio 2025
 
 📄 RMarkdown: modelamiento.Rmd
 
