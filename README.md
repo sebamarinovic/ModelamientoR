@@ -42,7 +42,7 @@ Se construyen y validan los siguientes modelos predictivos para estimar `Tempera
 | **XGBoost**     | **1.13**| **93.5**|
 
 🔴 *XGBoost* es el modelo con **mayor precisión predictiva**, logrando un ajuste sobresaliente con R² ≈ 93.5%.
-
+![image](https://github.com/user-attachments/assets/e1f5bba4-5d1f-4f8f-b0b6-bb263164c993)
 ---
 
 ## 📊 Resultados del Análisis PDP
@@ -55,6 +55,8 @@ Se utilizó la librería `pdp` para analizar el efecto marginal de `TempGas` sob
 
 ✏️ Este resultado entrega una **interpretación cuantitativa** crucial para comprender cómo afecta el sobrecalentamiento del sistema de gases a la eficiencia térmica del sistema de enfriamiento.
 
+![image](https://github.com/user-attachments/assets/64613117-13d2-4994-ba96-cfef7278d259)
+
 ---
 
 ## 🖥️ Aplicación Shiny
@@ -65,9 +67,6 @@ El proyecto cuenta con una app `Shiny` para diagnóstico operativo que incluye:
 - Visualización de **ciclos de mantenimiento**.
 - Series de tiempo y boxplots de Δ Agua.
 - Análisis automatizado con XGBoost.
-
-📎 Se exporta una figura en `"comparacion_modelos_real_vs_pred_test.png"` para revisión visual.
-![image](https://github.com/user-attachments/assets/e1f5bba4-5d1f-4f8f-b0b6-bb263164c993)
 
 ---
 
